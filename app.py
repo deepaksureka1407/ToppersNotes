@@ -4,6 +4,9 @@ import plotly.graph_objs as go
 import numpy as np
 import os
 from datetime import timedelta
+import subprocess
+import datetime
+import glob
 
 # === Load Files ===
 weekly_path = "downloads_compare/geo_IN_compare.csv"
@@ -144,3 +147,152 @@ if last_processed_date:
         st.dataframe(pd.DataFrame(update_rows), use_container_width=True)
 else:
     st.warning("No meta/last_processed_date.txt found. Create it to enable incremental comparison.")
+
+# === Detect & Process Only New Data ===
+st.subheader("🆕 Newly Added Data Analysis (Incremental)")
+
+history_file = "auc_history.csv"
+last_date = None
+
+if os.path.exists(history_file):
+    hist_df = pd.read_csv(history_file)
+    last_date = pd.to_datetime(hist_df["End"]).max()
+else:
+    hist_df = pd.DataFrame()
+
+# Determine new time window
+new_start = last_date + pd.Timedelta(days=1) if last_date else weekly_df["Date"].min()
+new_end = weekly_df["Date"].max()
+
+if new_start >= new_end:
+    st.info("✅ No new data to process. All data already analyzed.")
+else:
+    st.success(f"🔄 Analyzing new data from **{new_start.date()}** to **{new_end.date()}**")
+
+    new_rows = []
+    for kw in keywords:
+        w_chunk = weekly_df[(weekly_df["Date"] >= new_start) & (weekly_df["Date"] <= new_end)].dropna()
+        d_chunk = daily_df[(daily_df["Date"] >= new_start) & (daily_df["Date"] <= new_end)].dropna()
+
+        if w_chunk.empty or d_chunk.empty:
+            continue
+
+        w_values = pd.to_numeric(w_chunk[kw], errors="coerce").fillna(0)
+        d_values = pd.to_numeric(d_chunk[kw], errors="coerce").fillna(0)
+
+        if len(w_values) < 2 or len(d_values) < 2:
+            continue
+
+        w_auc = np.trapz(w_values, x=w_chunk["Date"][:len(w_values)].astype(np.int64) / 1e9)
+        d_auc = np.trapz(d_values, x=d_chunk["Date"][:len(d_values)].astype(np.int64) / 1e9)
+        ratio = d_auc / w_auc if w_auc else np.nan
+
+        new_rows.append({
+            "Keyword": kw,
+            "Start": new_start.date(),
+            "End": new_end.date(),
+            "Weekly AUC": round(w_auc, 2),
+            "Daily AUC": round(d_auc, 2),
+            "AUC Ratio (Daily / Weekly)": round(ratio, 4) if w_auc else "-"
+        })
+
+    if new_rows:
+        new_df = pd.DataFrame(new_rows)
+        st.dataframe(new_df, use_container_width=True)
+
+        # Append to history
+        updated_df = pd.concat([hist_df, new_df], ignore_index=True)
+        updated_df.to_csv(history_file, index=False)
+        st.success("✅ New AUC results saved to 'auc_history.csv'")
+    else:
+        st.warning("⚠️ No valid new data rows to process.")
+
+st.markdown("---")
+st.subheader("🔄 Fetch & Append New Google Trends Data")
+
+# Read last processed date
+with open("meta/last_processed_date.txt", "r") as f:
+    last_processed_date = datetime.datetime.strptime(f.read().strip(), "%Y-%m-%d").date()
+
+today = datetime.date.today()
+st.info(f"Last processed date: {last_processed_date}")
+
+if today <= last_processed_date:
+    st.success("✅ Data is already up to date!")
+else:
+    if st.button("📥 Fetch Incremental Google Trends Data"):
+        st.write(f"📆 Fetching daily data from {last_processed_date + datetime.timedelta(days=1)} to {today}...")
+
+        # Call the new incremental scraper
+        result = subprocess.run(["python", "google_trends_incremental_scraper.py", str(last_processed_date + datetime.timedelta(days=1)), str(today)], capture_output=True, text=True)
+
+        if result.returncode == 0:
+            st.success("✅ New incremental data scraped successfully!")
+            st.text(result.stdout)
+
+            # Find latest downloaded CSV file
+            files = glob.glob("downloads_incremental/*.csv")
+            if files:
+                latest_file = max(files, key=os.path.getctime)
+                st.info(f"📄 Showing recently downloaded file: `{os.path.basename(latest_file)}`")
+
+                # Read and show dataframe
+                df = pd.read_csv(latest_file)
+                st.dataframe(df)
+            else:
+                st.warning("⚠️ No downloaded file found to display.")
+        else:
+            st.error("❌ Failed to scrape data.")
+            st.text(result.stderr)
+
+st.markdown("### 📊 Scaling Factor Comparison (New Data vs. Historical Daily)")
+
+try:
+    # 1. Load historical data
+    df_hist = pd.read_csv("merged/5keywords_combined_daily_scaled.csv", parse_dates=["Day"])
+
+    # 2. Find latest incremental file
+    incremental_files = sorted(glob.glob("downloads_incremental/geo_IN_*.csv"), reverse=True)
+    if not incremental_files:
+        st.warning("⚠️ No new incremental file found.")
+    else:
+        latest_file = incremental_files[0]
+        df_new = pd.read_csv(latest_file, skiprows=1)  # skip metadata
+        df_new.rename(columns={df_new.columns[0]: "Day"}, inplace=True)
+        df_new["Day"] = pd.to_datetime(df_new["Day"])
+
+        # 3. Scaling factor calculation
+        results = []
+        for col in df_new.columns[1:]:
+            if col not in df_hist.columns:
+                continue
+
+            merged = pd.merge(
+                df_hist[["Day", col]], 
+                df_new[["Day", col]], 
+                on="Day", 
+                suffixes=("_hist", "_new")
+            )
+
+            if merged.empty:
+                continue
+
+            old_mean = merged[f"{col}_hist"].mean()
+            new_mean = merged[f"{col}_new"].mean()
+            scaling = round(old_mean / new_mean, 3) if new_mean != 0 else "∞"
+
+            results.append({
+                "Keyword": col,
+                "Historical Mean": round(old_mean, 2),
+                "New Data Mean": round(new_mean, 2),
+                "Scaling Factor": scaling
+            })
+
+        if results:
+            st.dataframe(pd.DataFrame(results))
+        else:
+            st.info("No matching keywords found for scaling comparison.")
+
+except Exception as e:
+    st.error("❌ Error comparing new and historical data.")
+    st.text(str(e))
