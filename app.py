@@ -7,6 +7,8 @@ from datetime import timedelta
 import subprocess
 import datetime
 import glob
+import matplotlib.pyplot as plt
+import re
 
 # === Load Files ===
 weekly_path = "downloads_compare/geo_IN_compare.csv"
@@ -16,6 +18,23 @@ meta_path = "meta/last_processed_date.txt"
 weekly_df = pd.read_csv(weekly_path, skiprows=2)
 daily_df = pd.read_csv(daily_path)
 
+# Define fixed reference keyword
+ref_keyword = "Combined Graduate Level Examination: (India)"
+
+# Safe file name conversion
+def safe_filename(name):
+    return re.sub(r'[\\/:"*?<>|]+', "_", name)
+
+safe_name = safe_filename(ref_keyword)
+fixed_path = f"merged/{safe_name}_combined_daily_scaled.csv"
+
+if os.path.exists(fixed_path):
+    daily_fixed_df = pd.read_csv(fixed_path)
+    daily_fixed_df.rename(columns={"Day": "Date"}, inplace=True)
+    daily_fixed_df["Date"] = pd.to_datetime(daily_fixed_df["Date"])
+else:
+    st.warning("⚠️ Fixed reference scaled file not found. Skipping extra plot.")
+    daily_fixed_df = None
 weekly_df.rename(columns={"Week": "Date"}, inplace=True)
 daily_df.rename(columns={"Day": "Date"}, inplace=True)
 
@@ -53,6 +72,38 @@ for kw in keywords:
 
 fig2.update_layout(height=400, hovermode="x unified", template="plotly_white")
 st.plotly_chart(fig2, use_container_width=True)
+
+if daily_fixed_df is not None:
+    st.subheader(f"🟢 Daily Trend (Fixed Reference: `{ref_keyword}`)")
+    fig_fixed = go.Figure()
+    for kw in keywords:
+        if kw in daily_fixed_df.columns:
+            fig_fixed.add_trace(go.Scatter(x=daily_fixed_df["Date"], y=daily_fixed_df[kw], mode="lines", name=kw))
+    fig_fixed.update_layout(
+        height=400,
+        hovermode="x unified",
+        template="plotly_white"
+    )
+    st.plotly_chart(fig_fixed, use_container_width=True)
+
+
+# Get common keywords (already calculated above)
+for kw in keywords:
+    st.markdown(f"### 📈 Keyword: `{kw}`")
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+
+    # Plot weekly data
+    ax.plot(weekly_df["Date"], weekly_df[kw], label="Weekly (Original)", linestyle="--", alpha=0.7)
+
+    # Plot daily scaled data (fixed reference)
+    ax.plot(daily_df["Date"], daily_df[kw], label="Daily (Rescaled with Fixed Reference)", alpha=0.9)
+
+    ax.set_ylabel("Interest")
+    ax.set_xlabel("Date")
+    ax.legend()
+    ax.grid(True)
+    st.pyplot(fig)
 
 # === AUC Comparison Every 6 Months ===
 st.subheader("📀 Area Under Curve (AUC) Comparison — Every 6 Months")
@@ -244,6 +295,22 @@ else:
         else:
             st.error("❌ Failed to scrape data.")
             st.text(result.stderr)
+
+# Run fixed-reference rescaler
+REFERENCE_KEYWORD = "Combined Graduate Level Examination: (India)"
+st.info(f"📌 Rescaling daily chunks using reference: {REFERENCE_KEYWORD}")
+
+result = subprocess.run(
+    ["python", "rescale_chunks_fixed_reference.py", REFERENCE_KEYWORD],
+    capture_output=True, text=True
+)
+
+if result.returncode == 0:
+    st.success("✅ Daily data successfully rescaled using fixed reference.")
+    st.text(result.stdout)
+else:
+    st.error("❌ Failed to rescale daily data with fixed reference.")
+    st.text(result.stderr)
 
 st.markdown("### 📊 Scaling Factor Comparison (New Data vs. Historical Daily)")
 
