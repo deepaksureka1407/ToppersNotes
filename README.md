@@ -1,166 +1,103 @@
-# 📈 ToppersNotes Google Trends Analyzer
+# 📊 ToppersNotes Google Trends Analyzer
 
-This project automates the end-to-end analysis of Google Trends data (YouTube search) for top 200 exams using both **weekly** and **daily** data over the past 5 years. It scales daily data against weekly averages, plots interactive visualizations, and compares the **Area Under the Curve (AUC)** for accuracy and trend alignment.
+A fully automated and interactive platform to scrape, process, compare, and visualize Google Trends data for 5 different keywords — including long-term trends (5 years), weekly views, and daily comparisons with scaling.
+
+This project is built using **Python**, **Pandas**, and **Streamlit**.
 
 ---
 
 ## 🚀 Features
 
-📅 **Scrape Google Trends data**
-📅 Supports 5 keywords per comparison
-📅 Daily data scraped in 6-month chunks
-📅 Weekly data scraped for full 5 years
-📅 Daily values **scaled** using weekly AUC
-📅 Interactive Streamlit dashboard
-📅 AUC comparison in every 6-month interval
-📅 Supports **incremental updates** when new data is added
-📅 Charts with toggleable visibility for all keywords
-📅 Bar chart to track AUC match % (Daily/Weekly)
+- 🔍 Scrape Google Trends data for 5 keyword limit
+- 📆 Compare weekly and daily interest over time (IOT)
+- 📐 Automatically calculate and apply **scaling factors**
+- 🧮 Support for **incremental updates** (only new data is fetched)
+- 🧷 **Fixed Reference Scaling** mode to anchor all other keywords to a single reference (e.g., SSC CGL)
+- 📊 Streamlit dashboard with interactive visualizations
+- ☁️ One-click deploy on Streamlit Cloud
 
 ---
 
 ## 📁 Project Structure
 
 ```
-ToppersNotes/
-├── app.py                          # Streamlit Dashboard
-├── google_trends_6months.py       # Script to scrape daily 5y data in 6m chunks
-├── google_trends_5y_weekly.py     # Script to scrape weekly 5y comparison
-├── merge_chunks.py                # Merge daily chunks into a single file
-├── google_trends_5y_daily_rescaled.py  # Scale daily using weekly AUC
-├── last_processed_date.txt        # Tracks last processed date for incremental updates
-├── downloads/                     # Raw CSV downloads from Google Trends
-├── downloads_compare/             # Weekly trend CSVs (e.g. geo_IN_compare.csv)
-├── merged/                        # Final merged & scaled daily CSVs
-├── trend_csvs/                    # (Optional) trend charts from Google Trends
-├── keywords.csv                   # Input keyword list with geo and name
-├── templates/                     # HTML or CSV template support (optional)
-└── README.md                      # ← This file
-```
+
+ToopersNotes/
+├── app.py                            # Main Streamlit dashboard
+├── google\_trends\_5y\_weekly.py        # Scraper for 5-year weekly data
+├── google\_trends\_6m\_daily\_chunks.py  # Scraper for daily 6-month chunks
+├── merge\_chunks.py                   # Merge chunked daily data
+├── rescale\_chunks\_fixed\_reference.py # Scale daily data using fixed keyword
+├── calculate\_incremental\_scaling.py  # Incremental scaling update script
+├── google\_trends\_incremental\_scraper.py
+├── meta/
+│   └── last\_processed\_date.txt       # Stores the last processed date
+├── merged/                           # Output: merged/scaled CSVs
+├── downloads\_daily\_chunks/           # Input: chunked daily CSVs
+├── downloads\_compare/                # Input: weekly CSVs
+├── downloads\_incremental/            # Input: new incremental daily scrapes
+├── keywords.csv                      # Master keyword+geo+category list
+├── requirements.txt                  # Python dependencies
+└── README.md                         # You're here!
+
+````
 
 ---
 
-## 📆 Dependencies
+## 🔧 How to Run
 
-Install all required packages via:
+### 1. Clone and install
 
 ```bash
+git clone https://github.com/deepaksureka1407/ToopersNotes.git
+cd ToopersNotes
 pip install -r requirements.txt
-```
+````
 
-Minimal list includes:
-
-```text
-streamlit
-pandas
-numpy
-plotly
-selenium
-```
-
----
-
-## 📄 Keywords CSV Format
-
-Input file: `keywords.csv`
-
-```csv
-name,keyword,geo,category_code
-SSC CGL,/g/11c265kd70,IN,45
-NDA,/g/11gxpsg25n,IN,45
-...
-```
-
----
-
-## 🔠 Usage
-
-### 1. Scrape Weekly Data (5 years)
-
-```bash
-python google_trends_5y_weekly.py
-```
-
-Generates file:
-`downloads_compare/geo_IN_compare.csv`
-
----
-
-### 2. Scrape Daily Data (6-month chunks for 5 years)
-
-```bash
-python google_trends_6months.py
-```
-
-Files saved in: `downloads_daily_chunks/`
-
----
-
-### 3. Merge Daily Chunks
-
-```bash
-python merge_chunks.py
-```
-
-Creates file:
-`merged/5keywords_combined_daily.csv`
-
----
-
-### 4. Scale Daily Data using Weekly Averages
-
-```bash
-python google_trends_5y_daily_rescaled.py
-```
-
-Creates file:
-`merged/5keywords_combined_daily_scaled.csv`
-
----
-
-### 5. Launch Streamlit Dashboard
+### 2. Run the web app
 
 ```bash
 streamlit run app.py
 ```
 
----
-
-## 📊 Dashboard Features
-
-* 📘 Weekly trend line chart
-* 🔴 Daily trend (after scaling) line chart
-* 📐 AUC comparison table (every 6 months)
-* 📈 AUC ratio bar chart for each keyword
-* 🟢 **Weekly average overlay** on daily chart
-* 🔄 Support for incremental new data updates (only updates new days based on `last_processed_date.txt`)
+> 📝 Make sure your `merged/` and `downloads_compare/` folders contain the required CSVs before launching the app.
 
 ---
 
-## 📅 Incremental Data Update Support
+## 🌐 Deployed App
 
-Once processed, the script stores the **last processed date** in:
-
-```
-last_processed_date.txt
-```
-
-Next time you rerun the scraper or dashboard, it only updates with **new daily/weekly data after this date** — improving performance and preventing re-scaling the entire dataset again.
+🔗 [Try the Live Demo](https://tpntstrendsanalyser.streamlit.app/)
 
 ---
 
-## 📃 License
+## 📐 Fixed Reference Scaling (What is this?)
 
-MIT License © 2025 [Deepak Sureka](https://github.com/deepaksureka1407)
+Google Trends uses a **dynamic scale** — meaning the highest point in any search is set to 100. This makes **cross-keyword comparisons unreliable**, especially across time or locations.
+
+To fix this, we introduce **Fixed Reference Scaling**:
+
+* Set one dominant keyword (e.g. **SSC CGL**) as the **absolute reference**
+* All other keywords are scaled **relative to it**
+* Ensures that comparisons stay consistent across all time chunks
 
 ---
 
-## 🙌 Acknowledgements
+## 🧠 Use Cases
 
-This project is built using:
+* Analyze popularity trends across exams
+* Compare interest levels between regions or exam categories
+* Track exam seasonality, peak demand, and emerging patterns
 
-* Google Trends Web Interface (YouTube Search)
-* Streamlit
-* Plotly
-* NumPy
-* Pandas
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## 🙌 Contributing
+
+We welcome PRs, ideas, and feedback!
+Please check [`CONTRIBUTING.md`](CONTRIBUTING.md) to get started.
+
