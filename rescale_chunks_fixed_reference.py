@@ -37,19 +37,26 @@ for file in files:
 
 print(f"📌 Global max for '{REFERENCE_KEYWORD}': {global_max}")
 
-# === STEP 3: Rescale all values in each chunk using the GLOBAL max ===
+# Step 3: Scale others relative to reference keyword
 rescaled_chunks = []
+
 for file in files:
     df = pd.read_csv(file, skiprows=2)
     df.rename(columns={"Day": "Date"}, inplace=True)
     df["Date"] = pd.to_datetime(df["Date"])
-
+    
     df_scaled = df.copy()
+    ref_col = pd.to_numeric(df[REFERENCE_KEYWORD], errors="coerce").fillna(0)
+
     for col in df.columns:
-        if col != "Date":
-            df_scaled[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-            df_scaled[col] = (df_scaled[col] / global_max) * 100  # Fixed global scaling
+        if col != "Date" and col != REFERENCE_KEYWORD:
+            other_col = pd.to_numeric(df[col], errors="coerce").fillna(0)
+            df_scaled[col] = (other_col / ref_col.replace(0, pd.NA)) * 100  # avoid div by 0
+            df_scaled[col] = df_scaled[col].fillna(0)
+    
+    df_scaled[REFERENCE_KEYWORD] = ref_col  # keep ref keyword unchanged
     rescaled_chunks.append(df_scaled)
+
 
 # === STEP 4: Concatenate all chunks and save ===
 final_df = pd.concat(rescaled_chunks).sort_values("Date")
